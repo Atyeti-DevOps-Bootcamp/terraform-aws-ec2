@@ -55,11 +55,15 @@ jobs:
 
             echo "Latest commit message: $commit_msg"
 
-            if echo "$commit_msg" | grep -qi "#major"; then
+            # Convert to lowercase for safety
+            commit_msg_lower=$(echo "$commit_msg" | tr '[:upper:]' '[:lower:]')
+
+            # Check for full word match
+            if echo "$commit_msg_lower" | grep -qE '\bmajor\b'; then
               major=$((major + 1))
               minor=0
               patch=0
-            elif echo "$commit_msg" | grep -qi "#minor"; then
+            elif echo "$commit_msg_lower" | grep -qE '\bminor\b'; then
               minor=$((minor + 1))
               patch=0
             else

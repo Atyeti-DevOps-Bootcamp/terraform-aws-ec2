@@ -38,7 +38,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-      - name: Auto version bump (patch) 
+      - name: Auto version bump (semantic)
         if: github.ref == 'refs/heads/main'
         run: |
           git fetch --tags
@@ -49,11 +49,26 @@ jobs:
           else
             version=${latest_tag#v}
             IFS='.' read -r major minor patch <<< "$version"
-            patch=$((patch + 1))
+
+            # Get latest commit message
+            commit_msg=$(git log -1 --pretty=%B)
+
+            echo "Latest commit message: $commit_msg"
+
+            if echo "$commit_msg" | grep -qi "#major"; then
+              major=$((major + 1))
+              minor=0
+              patch=0
+            elif echo "$commit_msg" | grep -qi "#minor"; then
+              minor=$((minor + 1))
+              patch=0
+            else
+              patch=$((patch + 1))
+            fi
+
             new_tag="v$major.$minor.$patch"
           fi
 
           echo "New tag: $new_tag"
           git tag $new_tag
           git push origin $new_tag
-#

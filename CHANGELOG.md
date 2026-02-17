@@ -1,3 +1,10 @@
+# [5.1.0](https://github.com/Atyeti-DevOps-Bootcamp/terraform-aws-ec2/compare/v5.0.0...v5.1.0) (2026-02-17)
+
+
+### Features
+
+* install conventional commits preset in CI ([50d3c87](https://github.com/Atyeti-DevOps-Bootcamp/terraform-aws-ec2/commit/50d3c8708256616ed024b7abd9390b402a0b11e0))
+
 # [5.0.0](https://github.com/Atyeti-DevOps-Bootcamp/terraform-aws-ec2/compare/v4.0.1...v5.0.0) (2026-02-17)
 
 

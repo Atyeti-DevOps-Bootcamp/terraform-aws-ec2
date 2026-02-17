@@ -68,7 +68,8 @@ jobs:
             @semantic-release/git \
             @semantic-release/github \
             @semantic-release/commit-analyzer \
-            @semantic-release/release-notes-generator
+            @semantic-release/release-notes-generator \
+            conventional-changelog-conventionalcommits
 
       - name: Run semantic-release
         if: github.ref == 'refs/heads/main'

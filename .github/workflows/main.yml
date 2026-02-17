@@ -40,9 +40,8 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
-      # -----------------------------------
+      
       # Enforce Conventional Commits
-      # -----------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -57,9 +56,7 @@ jobs:
         run: |
           npx commitlint --from=${{ github.event.pull_request.base.sha }} --to=${{ github.sha }}
 
-      # -----------------------------------
       # Semantic Release (only on main)
-      # -----------------------------------
       - name: Install semantic-release
         if: github.ref == 'refs/heads/main'
         run: |

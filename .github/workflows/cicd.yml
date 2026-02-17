@@ -1,0 +1,78 @@
+name: Terraform Module CI
+ 
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+ 
+permissions:
+  contents: write
+ 
+jobs:
+  terraform-checks:
+    runs-on: ubuntu-latest
+ 
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Required to fetch tags
+ 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+ 
+      - name: Terraform Init
+        run: terraform init -backend=false
+ 
+      - name: Terraform Format Check
+        run: terraform fmt -check
+ 
+      - name: Terraform Validate
+        run: terraform validate
+ 
+      - name: Configure Git
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+ 
+      - name: Auto version bump (semantic)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git fetch --tags
+          latest_tag=$(git tag --sort=-v:refname | head -n 1)
+ 
+          if [ -z "$latest_tag" ]; then
+            new_tag="v1.0.0"
+          else
+            version=${latest_tag#v}
+            IFS='.' read -r major minor patch <<< "$version"
+ 
+            # Get latest commit message
+            commit_msg=$(git log -1 --pretty=%B)
+ 
+            echo "Latest commit message: $commit_msg"
+ 
+            # Convert to lowercase for safety
+            commit_msg_lower=$(echo "$commit_msg" | tr '[:upper:]' '[:lower:]')
+ 
+            # Check for full word match
+            if echo "$commit_msg_lower" | grep -qE '\bmajor\b'; then
+              major=$((major + 1))
+              minor=0
+              patch=0
+            elif echo "$commit_msg_lower" | grep -qE '\bminor\b'; then
+              minor=$((minor + 1))
+              patch=0
+            else
+              patch=$((patch + 1))
+            fi
+ 
+            new_tag="v$major.$minor.$patch"
+ 
+          echo "New tag: $new_tag"
+          git tag $new_tag
+          git push origin $new_tag
+##

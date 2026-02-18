@@ -1,81 +1,108 @@
 name: Terraform Module CI
- 
+
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
-  pull_request:
   workflow_dispatch:
- 
+
 permissions:
   contents: write
- 
+  pull-requests: read
+
 jobs:
   terraform-checks:
     runs-on: ubuntu-latest
- 
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # Required to fetch tags
- 
+          fetch-depth: 0
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
- 
+
       - name: Terraform Init
         run: terraform init -backend=false
- 
+
       - name: Terraform Format Check
         run: terraform fmt -check
- 
+
       - name: Terraform Validate
         run: terraform validate
- 
+
+  version-bump:
+    needs: terraform-checks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Configure Git
-        if: github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
- 
-      - name: Auto version bump (semantic)
-        if: github.ref == 'refs/heads/main'
+
+      - name: Determine version bump from PR labels
+        id: bump
         run: |
           git fetch --tags
+
           latest_tag=$(git tag --sort=-v:refname | head -n 1)
- 
+
           if [ -z "$latest_tag" ]; then
-            new_tag="v1.0.0"
+            major=1
+            minor=0
+            patch=0
           else
             version=${latest_tag#v}
             IFS='.' read -r major minor patch <<< "$version"
- 
-            # Get latest commit message
-            commit_msg=$(git log -1 --pretty=%B)
- 
-            echo "Latest commit message: $commit_msg"
- 
-            # Convert to lowercase for safety
-            commit_msg_lower=$(echo "$commit_msg" | tr '[:upper:]' '[:lower:]')
- 
-            # Check for full word match
-            if echo "$commit_msg_lower" | grep -qE '\bmajor\b'; then
-              major=$((major + 1))
-              minor=0
-              patch=0
-            elif echo "$commit_msg_lower" | grep -qE '\bminor\b'; then
-              minor=$((minor + 1))
-              patch=0
-            else
-              patch=$((patch + 1))
-            fi
- 
-            new_tag="v$major.$minor.$patch"
-           fi
-        
- 
-          echo "New tag: $new_tag"
-          git tag $new_tag
-          git push origin $new_tag
-#####
+          fi
+
+          # Get merged PR number
+          pr_number=$(gh pr list --state merged --limit 1 --json number --jq '.[0].number')
+
+          # Fetch labels
+          labels=$(gh pr view "$pr_number" --json labels --jq '.labels[].name' | tr '[:upper:]' '[:lower:]')
+
+          echo "PR Labels:"
+          echo "$labels"
+
+          bump_type="patch"
+
+          if echo "$labels" | grep -qx "major"; then
+            bump_type="major"
+          elif echo "$labels" | grep -qx "minor"; then
+            bump_type="minor"
+          fi
+
+          if [ "$bump_type" = "major" ]; then
+            major=$((major + 1))
+            minor=0
+            patch=0
+          elif [ "$bump_type" = "minor" ]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            patch=$((patch + 1))
+          fi
+
+          new_tag="v$major.$minor.$patch"
+          echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
+
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push tag
+        run: |
+          git tag ${{ steps.bump.outputs.new_tag }}
+          git push origin ${{ steps.bump.outputs.new_tag }}
 #

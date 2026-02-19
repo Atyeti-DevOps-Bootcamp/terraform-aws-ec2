@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+    types: [opened, synchronize, reopened, closed]
   push:
     branches:
       - main
@@ -14,97 +15,116 @@ permissions:
   pull-requests: read
 
 jobs:
+
+  # JOB 1: Terraform checks
   terraform-checks:
+    if: github.event.pull_request.merged != true
     runs-on: ubuntu-latest
 
     steps:
+
+      # Step 1: Checkout repository
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # Step 2: Install Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      # Step 3: Initialize Terraform
       - name: Terraform Init
         run: terraform init -backend=false
 
+      # Step 4: Check Terraform formatting
       - name: Terraform Format Check
         run: terraform fmt -check
 
+      # Step 5: Validate Terraform configuration
       - name: Terraform Validate
         run: terraform validate
 
-  version-bump:
-    needs: terraform-checks
+
+  # JOB 2: Version bump (runs only after PR merge)
+  bump-version:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
+
+      # Step 1: Checkout repo with full history and tags
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
 
-      - name: Determine version bump from PR labels
-        id: bump
+      # Step 2: Read PR body and detect checkbox selection
+      - name: Get change type from PR body
+        id: change
+        run: |
+          BODY="${{ github.event.pull_request.body }}"
+
+          if echo "$BODY" | grep -iq "\[x\].*major"; then
+            echo "type=major" >> $GITHUB_OUTPUT
+          elif echo "$BODY" | grep -iq "\[x\].*minor"; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+          elif echo "$BODY" | grep -iq "\[x\].*patch"; then
+            echo "type=patch" >> $GITHUB_OUTPUT
+          else
+            echo "type=none" >> $GITHUB_OUTPUT
+          fi
+
+
+      # Step 3: Get latest version tag
+      - name: Get latest tag
+        id: tag
         run: |
           git fetch --tags
+          TAG=$(git tag --sort=-v:refname | head -n 1)
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-          latest_tag=$(git tag --sort=-v:refname | head -n 1)
 
-          if [ -z "$latest_tag" ]; then
-            major=1
-            minor=0
-            patch=0
-          
-          else
-            version=${latest_tag#v}
-            IFS='.' read -r major minor patch <<< "$version"
-          fi
-
-          # Get merged PR number
-          pr_number=$(gh pr list --state merged --limit 1 --json number --jq '.[0].number')
-
-          # Fetch labels
-          labels=$(gh pr view "$pr_number" --json labels --jq '.labels[].name' | tr '[:upper:]' '[:lower:]')
-
-          echo "PR Labels:"
-          echo "$labels"
-
-          bump_type="patch"
-
-          if echo "$labels" | grep -qx "major"; then
-            bump_type="major"
-          elif echo "$labels" | grep -qx "minor"; then
-            bump_type="minor"
-          fi
-
-          if [ "$bump_type" = "major" ]; then
-            major=$((major + 1))
-            minor=0
-            patch=0
-          elif [ "$bump_type" = "minor" ]; then
-            minor=$((minor + 1))
-            patch=0
-          else
-            patch=$((patch + 1))
-          fi
-
-          new_tag="v$major.$minor.$patch"
-          echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
-
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create and push tag
+      # Step 4: Calculate new version
+      - name: Calculate new version
+        id: bump
+        if: steps.change.outputs.type != 'none'
         run: |
-          git tag ${{ steps.bump.outputs.new_tag }}
-          git push origin ${{ steps.bump.outputs.new_tag }}
-#
+
+          VERSION=${{ steps.tag.outputs.tag }}
+          VERSION=${VERSION#v}
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          case "${{ steps.change.outputs.type }}" in
+            major)
+              MAJOR=$((MAJOR+1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR+1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH+1))
+              ;;
+          esac
+
+          NEW_VERSION="v$MAJOR.$MINOR.$PATCH"
+
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+
+      # Step 5: Create and push new git tag
+      - name: Create tag
+        if: steps.change.outputs.type != 'none'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+
+          git tag ${{ steps.bump.outputs.new_version }}
+          git push origin ${{ steps.bump.outputs.new_version }}
+
 

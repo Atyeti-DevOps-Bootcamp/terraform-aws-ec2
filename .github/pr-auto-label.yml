@@ -1,13 +1,13 @@
 name: Auto label PR from template
- 
+
 on:
   pull_request:
     types: [opened, edited, synchronize]
- 
+
 permissions:
   contents: read
   pull-requests: write
- 
+
 jobs:
   labeler:
     runs-on: ubuntu-latest
@@ -17,46 +17,34 @@ jobs:
         with:
           script: |
             const body = context.payload.pull_request.body || "";
- 
-            const labelsToRemove = ["patch", "minor", "major"];
-            const labelsToAdd = [];
- 
-            if (body.includes("- [x] major") || body.includes("- [X] major")) {
-              labelsToAdd.push("major");
-            } else if (body.includes("- [x] minor") || body.includes("- [X] minor")) {
-              labelsToAdd.push("minor");
-            } else if (body.includes("- [x] patch") || body.includes("- [X] patch")) {
-              labelsToAdd.push("patch");
+
+            const versionLabels = ["patch", "minor", "major"];
+            let labelToAdd = null;
+
+            if (/\[\s*x\s*\]\s*major/i.test(body)) {
+              labelToAdd = "major";
+            } else if (/\[\s*x\s*\]\s*minor/i.test(body)) {
+              labelToAdd = "minor";
+            } else if (/\[\s*x\s*\]\s*patch/i.test(body)) {
+              labelToAdd = "patch";
             }
- 
+
             // Remove existing version labels
-            await github.rest.issues.removeLabel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              name: labelsToRemove[0]
-            }).catch(() => {});
- 
-            await github.rest.issues.removeLabel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              name: labelsToRemove[1]
-            }).catch(() => {});
- 
-            await github.rest.issues.removeLabel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              name: labelsToRemove[2]
-            }).catch(() => {});
- 
+            for (const label of versionLabels) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                name: label
+              }).catch(() => {});
+            }
+
             // Add detected label
-            if (labelsToAdd.length > 0) {
+            if (labelToAdd) {
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                labels: labelsToAdd
+                labels: [labelToAdd]
               });
             }
